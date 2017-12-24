@@ -102,20 +102,9 @@ class listener implements EventSubscriberInterface
 		// Obtain guests data
 		$total_guests_online_24 = $this->obtain_guest_count_24();
 
-		$user_count = 0;
+		$user_count = $hidden_count = 0;
 		foreach ((array) $active_users as $row)
 		{
-			if ((!$row['session_viewonline'] && !empty($row['session_time'])) || !$row['user_allow_viewonline'])
-			{
-				if ($this->auth->acl_get('u_viewonline') || $row['user_id'] === $this->user->data['user_id'])
-				{
-					$row['username'] = '<em>' . $row['username'] . '</em>';
-				}
-				else
-				{
-					continue;
-				}
-			}
 			// we hide bots according to the hide bots extension
 			$should_hide = (!$this->auth->acl_get('a_') && $this->hidebots !== null) ? true : false;
 			if ($should_hide && $row['user_type'] == USER_IGNORE)
@@ -125,6 +114,19 @@ class listener implements EventSubscriberInterface
 			if ($row['user_lastvisit'] < $this->interval && $row['session_time'] < $this->interval)
 			{
 				continue;
+			}
+			if ((!$row['session_viewonline'] && !empty($row['session_time'])) || !$row['user_allow_viewonline'])
+			{
+				++$hidden_count;
+				if ($this->auth->acl_get('u_viewonline') || $row['user_id'] === $this->user->data['user_id'])
+				{
+					$row['username'] = '<em>' . $row['username'] . '</em>';
+				}
+				else
+				{
+					++$user_count;
+					continue;
+				}
 			}
 
 			$max_last_visit = max($row['user_lastvisit'], $row['session_time']);
@@ -137,8 +139,10 @@ class listener implements EventSubscriberInterface
 
 		// assign the forum stats to the template.
 		$this->template->assign_vars(array(
-			'USERS_24HOUR_TOTAL'	=> $this->user->lang('USERS_24HOUR_TOTAL', $user_count),
-			'USERS_ACTIVE'			=> $user_count,
+			'TOTAL_24HOUR_USERS'	=> $this->user->lang('TOTAL_24HOUR_USERS', $user_count + $total_guests_online_24),
+			'USERS_24HOUR_TOTAL'	=> $this->user->lang('USERS_24HOUR_TOTAL', $user_count - $hidden_count),
+			'HIDDEN_24HOUR_TOTAL'	=> $this->user->lang('HIDDEN_24HOUR_TOTAL', $hidden_count),
+			'USERS_ACTIVE'			=> $user_count + $hidden_count + $total_guests_online_24,
 			'GUEST_ONLINE_24'		=> $this->config['load_online_guests'] ? $this->user->lang('GUEST_ONLINE_24', $total_guests_online_24) : '',
 			'HOUR_TOPICS'			=> $this->user->lang('24HOUR_TOPICS', $activity['topics']),
 			'HOUR_POSTS'			=> $this->user->lang('24HOUR_POSTS', $activity['posts']),
@@ -168,7 +172,7 @@ class listener implements EventSubscriberInterface
 						'ON'	=> 's.session_user_id = u.user_id',
 					),
 				),
-				'WHERE'		=> 'u.user_lastvisit > ' . $this->interval . ' OR s.session_user_id <> ' . ANONYMOUS,
+				'WHERE'		=> 'u.user_lastvisit > ' . (int) $this->interval . ' OR s.session_user_id <> ' . ANONYMOUS,
 				'GROUP_BY'	=> 'u.user_id',
 				'ORDER_BY'	=> 'u.username_clean',
 			);
@@ -211,7 +215,7 @@ class listener implements EventSubscriberInterface
 			// total new posts in the last 24 hours
 			$sql = 'SELECT COUNT(post_id) AS new_posts
 					FROM ' . POSTS_TABLE . '
-					WHERE post_time > ' . $this->interval;
+					WHERE post_time > ' . (int) $this->interval;
 			$result = $this->db->sql_query($sql);
 			$activity['posts'] = $this->db->sql_fetchfield('new_posts');
 			$this->db->sql_freeresult($result);
@@ -219,7 +223,7 @@ class listener implements EventSubscriberInterface
 			// total new topics in the last 24 hours
 			$sql = 'SELECT COUNT(topic_id) AS new_topics
 					FROM ' . TOPICS_TABLE . '
-					WHERE topic_time > ' . $this->interval;
+					WHERE topic_time > ' . (int) $this->interval;
 			$result = $this->db->sql_query($sql);
 			$activity['topics'] = $this->db->sql_fetchfield('new_topics');
 			$this->db->sql_freeresult($result);
@@ -227,7 +231,7 @@ class listener implements EventSubscriberInterface
 			// total new users in the last 24 hours, counts inactive users as well
 			$sql = 'SELECT COUNT(user_id) AS new_users
 					FROM ' . USERS_TABLE . '
-					WHERE user_regdate > ' . $this->interval;
+					WHERE user_regdate > ' . (int) $this->interval;
 			$result = $this->db->sql_query($sql);
 			$activity['users'] = $this->db->sql_fetchfield('new_users');
 			$this->db->sql_freeresult($result);
